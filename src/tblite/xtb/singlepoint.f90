@@ -129,13 +129,28 @@ subroutine xtb_singlepoint(ctx, mol, calc, wfn, accuracy, energy, gradient, sigm
    allocate(edisp(mol%nat), source=0.0_wp)
    allocate(eint(mol%nat), source=0.0_wp)
    allocate(exbond(mol%nat), source=0.0_wp)
+   ! NOTE(Asmus) zero out the gradient and derivative Nx3 vectors (Atom, xyz-cordinates). 
    if (grad) then
       gradient(:, :) = 0.0_wp
       sigma(:, :) = 0.0_wp
    end if
-
+   ! NOTE(Asmus): calculates the number of occupied orbitals in the molecule and in each Atom and in each shell and stores the
+   ! results in nocc, n0at and n0sh respectively
    call get_occupation(mol, calc%bas, calc%h0, wfn%nocc, wfn%n0at, wfn%n0sh)
+   ! NOTE(Asmus): does the same as get_occupation does for wfn%nocc, so this should be 
+   ! nel = wfn.nocc. 
    nel = sum(wfn%n0at) - mol%charge
+   ! NOTE(Asmus): check that the requested number of unpaired electrons ( mol%uhf ) is congruent with the number of electrons
+        ! mod 2. This is aiming to make sure that if we have some number of electrons total and we use some number for free
+        ! electrons that the remainder is and even number such that they can all form pairs. 
+        ! if uhf is not set we default to pairing all electrons up and letting the remainder be free. 
+   ! A better way of checking this is probably the following:
+   ! nuhf = nel%2
+   ! if uhf:
+   !     n_non_free_el = nel-uhf
+   !     if n_non_free_el < 0 or n_non_free_el & 1:
+   !         ARHGH PANIK
+   !     nuhf = uhf
    if (mod(mol%uhf, 2) == mod(nint(nel), 2)) then
       wfn%nuhf = mol%uhf
    else
@@ -147,8 +162,12 @@ subroutine xtb_singlepoint(ctx, mol, calc, wfn, accuracy, energy, gradient, sigm
       end if
       wfn%nuhf = mod(nint(nel), 2)
    end if
+   ! NOTE(Asmus): take the number of non-free electron pairs and split them into alpha and beta spin. let the free have alpha spin
+       ! nalpha = $ (nocc - nuhf)/2 + nuhf $
+       ! nbeta  = $ (nocc - nuhf)/2 $
+       ! wfn%nel = [nalpha, nbeta]
    call get_alpha_beta_occupation(wfn%nocc, wfn%nuhf, wfn%nel(1), wfn%nel(2))
-
+   ! NOTE(Asmus): only used in the IPEA1-xTB Hamiltonian and GFN1-xTB Hamiltonian.
    if (allocated(calc%halogen)) then
       call timer%push("halogen")
       allocate(hcache)
@@ -159,18 +178,29 @@ subroutine xtb_singlepoint(ctx, mol, calc, wfn, accuracy, energy, gradient, sigm
       energies(:) = energies + exbond
       call timer%pop
    end if
-
    if (allocated(calc%repulsion)) then
       call timer%push("repulsion")
       allocate(rcache)
-      call calc%repulsion%update(mol, rcache)
+      ! NOTE(Asmus): update does nothing in the case of GFNn-xTB repulsion: repulsion is of type tb_repulsion and does not
+          ! override the stub method in the container type
+      call calc%repulsion%update(mol, rcache) 
+      ! NOTE(Asmus): calculates the repulsion energy and the gradient and the derivative
+          ! for GFN1-xTB equation 13 in https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.7b00118
+          ! for GFN2-xTB equation 9 in https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.8b01176
+          ! for both it is the following but with different values for the constants
+          ! the energy is $\sum_{A}\sum_{B<A} (Z_A^{eff}Z_B^{eff})/R_{AB} * e^(-\sqrt{\alpha_A\alphaB}R_{AB}^{k_{rep}})$
+          ! the gradients and derivatives are per atom and w.r.t the x, y and z coordinates. 
       call calc%repulsion%get_engrad(mol, rcache, erep, gradient, sigma)
       if (prlevel > 1) &
          call ctx%message(label_repulsion // format_string(sum(erep), real_format) // " Eh")
+      
       energies(:) = energies + erep
       call timer%pop
    end if
 
+   ! NOTE(Asmus): do the d3 dispersion for GFN1-xTB and d4' dispersion for GFN2-xTB
+       ! eq. 32 and 40 in https://wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493
+       ! The d4' dispersion is charge dependant and therefore that part is also part of the later scf steps. 
    if (allocated(calc%dispersion)) then
       call timer%push("dispersion")
       allocate(dcache)
@@ -182,6 +212,7 @@ subroutine xtb_singlepoint(ctx, mol, calc, wfn, accuracy, energy, gradient, sigm
       call timer%pop
    end if
 
+   ! NOTE(Asmus): take a stack of possible interactions e.g. electric fields and solvation models and calculate their contribution. 
    if (allocated(calc%interactions)) then
       call timer%push("interactions")
       allocate(icache)
@@ -192,8 +223,9 @@ subroutine xtb_singlepoint(ctx, mol, calc, wfn, accuracy, energy, gradient, sigm
       energies(:) = energies + eint
       call timer%pop
    end if
-
+   ! NOTE(Asmus): create a structure to hold the overlap, dipole and quadrupole potentials
    call new_potential(pot, mol, calc%bas, wfn%nspin)
+   ! NOTE(Asmus): calculate the isotropic and anisotropic electrostatic energies. 
    if (allocated(calc%coulomb)) then
       allocate(ccache)
       call timer%push("coulomb")
@@ -203,8 +235,8 @@ subroutine xtb_singlepoint(ctx, mol, calc, wfn, accuracy, energy, gradient, sigm
 
    if (prlevel > 1) &
       call ctx%message(label_electrons // format_string(wfn%nocc, real_format) // " e")
-
    call timer%push("hamiltonian")
+   ! NOTE(Asmus): calculate the coordination numbers for modifying the self energies
    if (allocated(calc%ncoord)) then
       allocate(cn(mol%nat))
       if (grad) then
@@ -212,24 +244,27 @@ subroutine xtb_singlepoint(ctx, mol, calc, wfn, accuracy, energy, gradient, sigm
       end if
       call calc%ncoord%get_cn(mol, cn, dcndr, dcndL)
    end if
-
+   ! NOTE(Asmus): calculate the self energies. 
    allocate(selfenergy(calc%bas%nsh), dsedcn(calc%bas%nsh))
    call get_selfenergy(calc%h0, mol%id, calc%bas%ish_at, calc%bas%nsh_id, cn=cn, &
       & selfenergy=selfenergy, dsedcn=dsedcn)
 
    cutoff = get_cutoff(calc%bas, accuracy)
+   ! NOTE(Asmus): get repetitions of the cell if it repeats in a lattice. 
    call get_lattice_points(mol%periodic, mol%lattice, cutoff, lattr)
+   ! NOTE(Asmus): use lattice points to construct an adjacency list taking into account neighbours in a different cell. 
    call new_adjacency_list(list, mol, lattr, cutoff)
 
    if (prlevel > 1) then
       call ctx%message(label_cutoff // format_string(cutoff, real_format) // " bohr")
       call ctx%message("")
    end if
-
+   ! NOTE(Asmus): Calculate the hamiltonian.
    call new_integral(ints, calc%bas%nao)
    call get_hamiltonian(mol, lattr, list, calc%bas, calc%h0, selfenergy, &
       & ints%overlap, ints%dipole, ints%quadrupole, ints%hamiltonian)
-
+   ! NOTE(Asmus): sets up the lapack eigen solver: boils down to new_sygvr or new_sygvd depending on the chosen algotithm
+        ! does not need the overlap matrix, just the size... Should just pass that. 
    call ctx%new_solver(solver, ints%overlap, wfn%nel, wfn%kt)
    call timer%pop
 
@@ -238,6 +273,10 @@ subroutine xtb_singlepoint(ctx, mol, calc, wfn, accuracy, energy, gradient, sigm
    iscf = 0
    converged = .false.
    info = calc%variable_info()
+   ! NOTE(Asmus): Instantiate the Broyden mixer https://en.wikipedia.org/wiki/Broyden%27s_method
+        ! used for updating the density matrix in each itteration.
+        ! Broyden is used instead of the Newtonian method for root finding because it only needs to calculate the Jacobian once and 
+        ! then does dampend updates instead of calculating it anew in every iteration. 
    call new_mixer(mixer, calc%max_iter, wfn%nspin*get_mixer_dimension(mol, calc%bas, info), &
       & calc%mixer_damping)
    if (prlevel > 0) then
@@ -245,11 +284,18 @@ subroutine xtb_singlepoint(ctx, mol, calc, wfn, accuracy, energy, gradient, sigm
       call ctx%message("  cycle        total energy    energy error   density error")
       call ctx%message(repeat("-", 60))
    end if
+   ! NOTE(Asmus): do the self consistent charges loop
    do while(.not.converged .and. iscf < calc%max_iter)
-      elast = sum(eelec)
+      ! NOTE(Asmus): charge dependent energy, zero in first iteration
+      elast = sum(eelec) 
+      ! NOTE(Asmus): Do self consistent field step. i.e. update all the charge dependant energies: d4' (for GFN2), E_el, G_fermi
+          ! d4' eq. 40 wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493
+          ! E_el eq. 2 https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.7b00118
+          ! G_fermi eq. 18. https://wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493
       call next_scf(iscf, mol, calc%bas, wfn, solver, mixer, info, &
          & calc%coulomb, calc%dispersion, calc%interactions, ints, pot, &
          & ccache, dcache, icache, eelec, error)
+      ! NOTE(Asmus): check that both the energy and density matrix no longer change meaningfully. 
       econverged = abs(sum(eelec) - elast) < econv
       pconverged = mixer%get_error() < pconv
       converged = econverged .and. pconverged
@@ -271,6 +317,7 @@ subroutine xtb_singlepoint(ctx, mol, calc, wfn, accuracy, energy, gradient, sigm
       call ctx%message(repeat("-", 60))
       call ctx%message("")
    end if
+   ! NOTE(Asmus): Add the SCC calculated charge dependant energies. 
    energies(:) = energies + eelec
    energy = sum(energies)
    if (present(results)) then

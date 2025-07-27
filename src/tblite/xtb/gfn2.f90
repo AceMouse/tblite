@@ -867,7 +867,8 @@ subroutine get_reference_occ(self, mol, bas, refocc)
    end do
 end subroutine get_reference_occ
 
-
+! NOTE(Asmus): eq. 23 in https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.8b01176
+    ! technically related to the derivative of \eta_A w.r.t. the charge q_A
 subroutine get_hubbard_derivs(mol, bas, hubbard_derivs)
    !> Molecular structure data
    type(structure_type), intent(in) :: mol

@@ -74,7 +74,7 @@ module tblite_coulomb_charge_effective
    character(len=*), parameter :: label = "isotropic Klopman-Ohno-Mataga-Nishimoto electrostatics"
 
 contains
-
+! NOTE(Asmus): set up \eta for the E_\gamma term 
 !> Construct new effective electrostatic interaction container
 subroutine new_effective_coulomb(self, mol, gexp, hubbard, average, nshell)
    !> Instance of the electrostatic container
@@ -114,6 +114,7 @@ subroutine new_effective_coulomb(self, mol, gexp, hubbard, average, nshell)
    self%rcut = 10.0_wp
 
    if (present(nshell)) then
+      ! NOTE(Asmus): calculate GFN2 eta in eq. 22 https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.8b01176
       allocate(self%hubbard(mshell, mshell, mol%nid, mol%nid))
       do isp = 1, mol%nid
          do jsp = 1, mol%nid
@@ -127,6 +128,7 @@ subroutine new_effective_coulomb(self, mol, gexp, hubbard, average, nshell)
          end do
       end do
    else
+      ! NOTE(Asmus): calculate GFN1 eta in eq. 5 https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.7b00118
       allocate(self%hubbard(1, 1, mol%nid, mol%nid))
       do isp = 1, mol%nid
          do jsp = 1, mol%nid
@@ -137,7 +139,7 @@ subroutine new_effective_coulomb(self, mol, gexp, hubbard, average, nshell)
 
 end subroutine new_effective_coulomb
 
-
+! NOTE(Asmus): used in GFN1 eq. 5 in https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.7b00118
 !> Harmonic averaging functions for hardnesses in GFN1-xTB
 pure function harmonic_average(gi, gj) result(gij)
    !> Hubbard parameter of shell i
@@ -151,7 +153,7 @@ pure function harmonic_average(gi, gj) result(gij)
 
 end function harmonic_average
 
-
+! NOTE(Asmus): used in GFN2 eq. 22 in https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.8b01176
 !> Arithmetic averaging functions for hardnesses in GFN2-xTB
 pure function arithmetic_average(gi, gj) result(gij)
    !> Hubbard parameter of shell i
@@ -165,7 +167,7 @@ pure function arithmetic_average(gi, gj) result(gij)
 
 end function arithmetic_average
 
-
+! NOTE(Asmus): only used if specified in params
 !> Geometric averaging functions for hardnesses
 pure function geometric_average(gi, gj) result(gij)
    !> Hubbard parameter of shell i

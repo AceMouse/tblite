@@ -407,7 +407,7 @@ subroutine get_shell_hardness(mol, param, irc, hardness)
    end do
 end subroutine get_shell_hardness
 
-
+! NOTE(Asmus): calculate \Gamma_A for every A used in eq. 2 https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.7b00118
 subroutine get_hubbard_derivs(mol, param, irc, hubbard_derivs)
    !> Molecular structure data
    type(structure_type), intent(in) :: mol

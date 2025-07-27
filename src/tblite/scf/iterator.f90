@@ -87,6 +87,7 @@ subroutine next_scf(iscf, mol, bas, wfn, solver, mixer, info, coulomb, dispersio
    real(wp), allocatable :: eao(:)
    real(wp) :: ts
 
+   ! NOTE(Asmus): No previous iteration to mix with on first iteration. 
    if (iscf > 0) then
       call mixer%next(error)
       if (allocated(error)) return
@@ -96,18 +97,25 @@ subroutine next_scf(iscf, mol, bas, wfn, solver, mixer, info, coulomb, dispersio
    iscf = iscf + 1
    call pot%reset
    if (present(coulomb) .and. present(ccache)) then
+      ! NOTE(Asmus): Calculate the coulomb contribution to the charge dependant, dipole dependant and quadrupole dependant potential
       call coulomb%get_potential(mol, ccache, wfn, pot)
    end if
    if (present(dispersion) .and. present(dcache)) then
+      ! NOTE(Asmus): Calculate the dispersion contribution to the charge dependant, dipole dependant and quadrupole dependant potential
       call dispersion%get_potential(mol, dcache, wfn, pot)
    end if
    if (present(interactions) .and. present(icache)) then
+      ! NOTE(Asmus): Calculate the additional interactions contribution to the charge dependant, dipole dependant and quadrupole dependant potential. 
+            ! E.g solvation and electric fields. 
       call interactions%get_potential(mol, icache, wfn, pot)
    end if
+   ! NOTE(Asmus): add the charge dependant, dipole dependant and quadrupole dependant potential to the h1 hamiltonian, wfn%coeff. 
    call add_pot_to_h1(bas, ints, pot, wfn%coeff)
 
+   ! NOTE(Asmus): give the new wave funtion to the Broyden mixer
    call set_mixer(mixer, wfn, info)
 
+   ! NOTE(Asmus): Solve for the new density using G_fermi from eq. 18-20 in https://wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493
    call next_density(wfn, solver, ints, ts, error)
    if (allocated(error)) return
 
@@ -306,11 +314,13 @@ subroutine next_density(wfn, solver, ints, ts, error)
    real(wp) :: e_fermi, stmp(2)
    real(wp), allocatable :: focc(:)
    integer :: spin
-
+   ! NOTE(Asmus): eq. 19 in https://wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493
    call solver%get_density(wfn%coeff, ints%overlap, wfn%emo, wfn%focc, wfn%density, error)
    do spin = 1, 2
+      ! NOTE(Asmus): mult by K_B and T_el and inner sum over i in eq. 18 https://wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493
       call get_electronic_entropy(wfn%focc(:, spin), wfn%kt, stmp(spin))
    end do
+   ! NOTE(Asmus): outer sum eq. 18 https://wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493 G_fermi energy.
    ts = sum(stmp)
 end subroutine next_density
 
@@ -318,7 +328,7 @@ subroutine get_electronic_entropy(occ, kt, s)
    real(wp), intent(in) :: occ(:)
    real(wp), intent(in) :: kt
    real(wp), intent(out) :: s
-
+   ! NOTE(Asmus): inner sum over i in eq. 18 https://wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493
    s = sum(log(occ ** occ * (1 - occ) ** (1 - occ))) * kt
 end subroutine get_electronic_entropy
 
