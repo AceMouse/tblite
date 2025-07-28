@@ -31,7 +31,7 @@ module tblite_wavefunction_spin
 
 
    ! NOTE(Asmus) takes a 1,2,3 or 4 D array where the inner dimension is 2.
-   ! every array in the inner dimension [a,b] is transformed it to 0.5*[a+b, a-b]
+   ! every array in the inner dimension [x=a+b, y=a-b], is transformed to [x+y=2a, x-y=2b]/2
    !> Convert a charge-magnetization representation into an up-down representation
    interface magnet_to_updown
       module procedure :: magnet_to_updown_1
@@ -41,7 +41,7 @@ module tblite_wavefunction_spin
    end interface magnet_to_updown
 
    ! NOTE(Asmus) takes a 1,2,3 or 4 D array where the inner dimension is 2.
-   ! every array in the inner dimension [a,b] is transformed it to [a+b, a-b]
+   ! every array in the inner dimension [a, b] is transformed it to [a+b=x, a-b=y]
    !> Convert an up-down representation into a charge-magnetization representation
    interface updown_to_magnet
       module procedure :: updown_to_magnet_1

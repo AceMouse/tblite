@@ -112,41 +112,55 @@ subroutine next_scf(iscf, mol, bas, wfn, solver, mixer, info, coulomb, dispersio
    ! NOTE(Asmus): add the charge dependant, dipole dependant and quadrupole dependant potential to the h1 hamiltonian, wfn%coeff. 
    call add_pot_to_h1(bas, ints, pot, wfn%coeff)
 
-   ! NOTE(Asmus): give the new wave funtion to the Broyden mixer
+   ! NOTE(Asmus): give the new wave function to the Broyden mixer (it will internally call it q_in)
    call set_mixer(mixer, wfn, info)
 
    ! NOTE(Asmus): Solve for the new density using G_fermi from eq. 18-20 in https://wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493
    call next_density(wfn, solver, ints, ts, error)
    if (allocated(error)) return
 
+   ! NOTE(Asmus): inner part of eq. 27a in https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.8b01176
+        ! or inner part of eq. 3 in https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.7b00118
    call get_mulliken_shell_charges(bas, ints%overlap, wfn%density, wfn%n0sh, &
       & wfn%qsh)
+   ! NOTE(Asmus): eq. 27a in https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.8b01176
+        ! or eq. 3 in https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.7b00118
    call get_qat_from_qsh(bas, wfn%qsh, wfn%qat)
 
+   ! NOTE(Asmus): eq. 27b in https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.8b01176
    call get_mulliken_atomic_multipoles(bas, ints%dipole, wfn%density, &
       & wfn%dpat)
+   ! NOTE(Asmus): eq. 27c in https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.8b01176
    call get_mulliken_atomic_multipoles(bas, ints%quadrupole, wfn%density, &
       & wfn%qpat)
 
+   ! NOTE(Asmus): compute the diff between the old and new wave function (it will internally call it dq)
    call diff_mixer(mixer, wfn, info)
 
+   ! NOTE(Asmus): eq. 22 in https://wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493
    allocate(eao(bas%nao), source=0.0_wp)
    call get_electronic_energy(ints%hamiltonian, wfn%density, eao)
-
+   ! NOTE(Asmus): The new energy is the Fermi smearing + the huckel + the coulomb + the dispersion + the rest.
+        ! Since we calculated the total fermi smearing for the molecule we just split it evenly between the atoms for now:
    energies(:) = ts / size(energies)
+    ! NOTE(Asmus): add in the huckel energy contribution per atom. 
    call reduce(energies, eao, bas%ao2at)
    if (present(coulomb) .and. present(ccache)) then
+      ! NOTE(Asmus): calculate the isotropic and anisotropic electrostatic energies. 
       call coulomb%get_energy(mol, ccache, wfn, energies)
    end if
    if (present(dispersion) .and. present(dcache)) then
+      ! NOTE(Asmus): do the d4' dispersion for GFN2-xTB eq. 32 and 40 in https://wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493
+          ! The d4' dispersion is charge dependant. 
       call dispersion%get_energy(mol, dcache, wfn, energies)
    end if
    if (present(interactions) .and. present(icache)) then
+      ! NOTE(Asmus): take a stack of possible interactions e.g. electric fields and solvation models and calculate their contribution. 
       call interactions%get_energy(mol, icache, wfn, energies)
    end if
 end subroutine next_scf
 
-
+! NOTE(Asmus): eq. 22 in https://wires.onlinelibrary.wiley.com/doi/10.1002/wcms.1493
 subroutine get_electronic_energy(h0, density, energies)
    real(wp), intent(in) :: h0(:, :)
    real(wp), intent(in) :: density(:, :, :)

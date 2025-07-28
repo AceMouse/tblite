@@ -183,7 +183,8 @@ subroutine get_repulsion_energy(mol, trans, cutoff, alpha, zeff, kexp, rexp, &
 
 end subroutine get_repulsion_energy
 
-
+! NOTE(Asmus): eq. 9 https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.8b01176
+    ! eq. 13 https://pubs.acs.org/doi/pdf/10.1021/acs.jctc.7b00118
 subroutine get_repulsion_derivs(mol, trans, cutoff, alpha, zeff, kexp, rexp, &
       & energies, gradient, sigma)
    !> Molecular structure data
