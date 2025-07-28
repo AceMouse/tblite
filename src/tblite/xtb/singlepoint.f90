@@ -141,16 +141,16 @@ subroutine xtb_singlepoint(ctx, mol, calc, wfn, accuracy, energy, gradient, sigm
    ! nel = wfn.nocc. 
    nel = sum(wfn%n0at) - mol%charge
    ! NOTE(Asmus): check that the requested number of unpaired electrons ( mol%uhf ) is congruent with the number of electrons
-        ! mod 2. This is aiming to make sure that if we have some number of electrons total and we use some number for free
-        ! electrons that the remainder is and even number such that they can all form pairs. 
+        ! mod 2. This is aiming to make sure that if we have some number of electrons total and we use some number for unpaired
+        ! electrons that the remainder is an even number such that they can all form pairs. 
         ! if uhf is not set we default to pairing all electrons up and letting the remainder be free. 
    ! A better way of checking this is probably the following:
-   ! nuhf = nel%2
-   ! if uhf:
-   !     n_non_free_el = nel-uhf
-   !     if n_non_free_el < 0 or n_non_free_el & 1:
-   !         ARHGH PANIK
-   !     nuhf = uhf
+   !
+   !     assert(nel >= uhf, "can't have more unpaired electrons than total electrons.")
+   !     nuhf = uhf if uhf != 0 else nel%2
+   !     n_paired_el = nel-uhf
+   !     assert(n_paired_el & 1 == 0, "can't have odd number of paired electrons, they have to be able to pair!")
+   !
    if (mod(mol%uhf, 2) == mod(nint(nel), 2)) then
       wfn%nuhf = mol%uhf
    else
